@@ -1,0 +1,55 @@
+name: Build and Release RPM
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Prepare build environment
+        run: |
+          ./Telegram/build/prepare/linux.sh
+
+      - name: Build AyuGram in Docker
+        run: |
+          docker run --rm \
+            -v "$PWD:/usr/src/tdesktop" \
+            ghcr.io/telegramdesktop/tdesktop/centos_env:latest \
+            /usr/src/tdesktop/Telegram/build/docker/centos_env/build.sh \
+            -D TDESKTOP_API_ID=${{ secrets.TDESKTOP_API_ID || '2040' }} \
+            -D TDESKTOP_API_HASH=${{ secrets.TDESKTOP_API_HASH || 'b18441a1ff607e10a989891a5462e627' }}
+
+      - name: Package RPM
+        run: |
+          # Install rpm-build in a temporary fedora container to create the RPM
+          docker run --rm \
+            -v "$PWD:/build" \
+            fedora:latest \
+            bash -c "dnf install -y rpm-build && \
+                    mkdir -p ~/rpmbuild/{SOURCES,SPECS,BUILD,RPMS,SRPMS} && \
+                    cp /build/Telegram/build/ayugram.spec ~/rpmbuild/SPECS/ && \
+                    rpmbuild -ba ~/rpmbuild/SPECS/ayugram.spec \
+                      --define '_version ${{ github.ref_name }}' \
+                      --define '_out_dir /build/out' && \
+                    cp ~/rpmbuild/RPMS/*/*.rpm /build/out/"
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: out/*.rpm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
