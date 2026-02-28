@@ -19,6 +19,13 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pipx
+          pipx install poetry
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
       - name: Prepare build environment
         run: |
           ./Telegram/build/prepare/linux.sh
